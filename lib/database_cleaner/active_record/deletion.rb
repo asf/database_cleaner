@@ -74,11 +74,31 @@ module DatabaseCleaner::ActiveRecord
       include SelectiveTruncation
     end
 
+    def initialize(opts={})
+      if opts.has_key?(:only_added_rows)
+        @only_added_rows = Hash[opts[:only_added_rows].collect { |e| [e, nil] }]
+        opts.delete(:only_added_rows)
+      end
+      super
+    end
+
+    def start
+      @only_added_rows.each do |table_name, top_id|
+        @only_added_rows[table_name] = table_name
+                                       .constantize
+                                       .order('id DESC')
+                                       .select('id').first.id
+      end
+    end
+
     def clean
       connection = connection_class.connection
       connection.disable_referential_integrity do
         tables_to_truncate(connection).each do |table_name|
           connection.delete_table table_name
+        end
+        @only_added_rows.each do |table_name, top_id|
+          table_name.constantize.where(['id > ?', top_id]).delete_all
         end
       end
     end
